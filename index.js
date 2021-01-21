@@ -4,7 +4,9 @@ const cleanName = str => {
   return str.toLowerCase().trim()
 }
 
-const getData = async url => {
+const comparer = anotherArr => current => anotherArr.filter(other => other.id == current.categoryId).length == 0
+
+const getData = async url => { 
   try {
     const response = await fetch(proxyurl + url)
     const contents = await response.json()
@@ -15,21 +17,69 @@ const getData = async url => {
 }
 
 const init = async () => {
-  let nameChanged = []
+  
+  // Axuliar object
   let newObject = {}
+  // New Arrays of Object Simplified and Ordered
   let treeDataSimplified = []
+  let seoTextDataOrdered = []
+  // Report for Case 1: Categories with name changed
+  let nameChanged = []
+  // Report for Case 2: Categories IDs not founds
+  let notFounds = []
 
   try {
     const seoTextData = await getData('https://www.plazavea.com.pe/files/seoText.json')
     const treeData = await getData('https://www.plazavea.com.pe/api/catalog_system/pub/category/tree/3')
 
-    treeData.forEach(item => {
-      treeDataSimplified.push(item)
+    // Push data inside treeDataSimplified
+    treeData.forEach(({ id, name, hasChildren, children, url, Title, MetaTagDescription }) => {
+      treeDataSimplified.push({
+        id,
+        name,
+        hasChildren,
+        url,
+        Title,
+        MetaTagDescription
+      })
+
+      if (hasChildren) {
+        children.forEach(({ id, name, hasChildren, children, url, Title, MetaTagDescription }) => {
+          treeDataSimplified.push({
+            id,
+            name,
+            hasChildren,
+            url,
+            Title,
+            MetaTagDescription
+          })
+
+          if (hasChildren) {
+            children.forEach(({ id, name, hasChildren, children, url, Title, MetaTagDescription }) => {
+              treeDataSimplified.push({
+                id,
+                name,
+                hasChildren,
+                url,
+                Title,
+                MetaTagDescription
+              })
+            })
+          }
+        })
+      }
     })
+
+    // Ordering treeDataSimplified by id key
+    treeDataSimplified.sort((a, b) => parseInt(a.id) < parseInt(b.id) ? -1 : 1)
+
+    // Ordering seoTextDataOrdered by categoryId key
+    seoTextDataOrdered = seoTextData.electro.sort((a, b) => parseInt(a.categoryId) < parseInt(b.categoryId) ? -1 : 1)
     
-    seoTextData.electro.forEach(item => {
+    seoTextDataOrdered.forEach(item => {
       treeData.forEach(treeItem => {
         // Find in base level, not children
+        console.log('finding base level')
         if (treeItem.id == item.categoryId) {
           if (cleanName(treeItem.name) !== cleanName(item.categoryName)) {
             newObject = {
@@ -72,6 +122,7 @@ const init = async () => {
 
             // Find in second level children
             if (treeItemChildLvl1.hasChildren) {
+              console.log('finding sublevel 2')
               treeItemChildLvl1.children.forEach(treeItemChildLvl2 => {
                 if (treeItemChildLvl2.id == item.categoryId) {
                   if (cleanName(treeItemChildLvl2.name) !== cleanName(item.categoryName)) {
@@ -92,6 +143,7 @@ const init = async () => {
                   
                   // Find in third level children
                   if (treeItemChildLvl2.hasChildren) {
+                    console.log('finding sublevel 3')
                     treeItemChildLvl2.forEach(treeItemChildLvl3 => {
                       if (treeItemChildLvl3.id == item.categoryId) {
                         if (cleanName(treeItemChildLvl3.name) !== cleanName(item.categoryName)) {
@@ -120,9 +172,15 @@ const init = async () => {
       })
     })
 
-    console.log('treeData', treeData)
-    console.log('seoTextData', seoTextData.electro)
+    const onlyInTreeData = treeDataSimplified.filter(comparer(seoTextDataOrdered))
+    const onlyInSeoTextData = seoTextDataOrdered.filter(comparer(treeDataSimplified))
+    notFounds = onlyInTreeData.concat(onlyInSeoTextData)
+
+    // Print results
+    console.log('treeDataSimplified', treeDataSimplified)
+    console.log('seoTextDataOrdered', seoTextDataOrdered)
     console.log('name changed', nameChanged)
+    console.log('not founds', JSON.stringify(notFounds))
 
   } catch (err) {
     console.log(err)
